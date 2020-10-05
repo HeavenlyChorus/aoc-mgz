@@ -1,5 +1,82 @@
 """Determine player data."""
 
+from collections import defaultdict
+
+
+def enrich_de_player_data(players, extraction):
+    """Enrich player data with extracted data."""
+    last_records = {}
+    research_count = defaultdict(int)
+    castles = defaultdict(int)
+    wonders = defaultdict(int)
+    age_times = {}
+
+    for player in players:
+        last_records[player['number']] = None
+        age_times[player['number']] = {}
+
+    for record in reversed(extraction['timeseries']):
+        if not last_records[record['player_number']]:
+            last_records[record['player_number']] = record
+        if all(last_records.values()):
+            break
+
+    for obj in extraction['objects']:
+        if obj['initial_object_id'] == 82:
+            castles[obj['initial_player_number']] += 1
+        elif obj['initial_object_id'] == 276:
+            wonders[obj['initial_player_number']] += 1
+
+    for research in extraction['research']:
+        if not research['finished']:
+            continue
+        if research['technology_id'] in [101, 102, 103]:
+            age_times[research['player_number']][research['technology_id']] = int(research['started'] / 1000)
+        research_count[research['player_number']] += 1
+
+    for player in players:
+        record = last_records[player['number']]
+        player.update(dict(
+            score=record['total_score'],
+            winner=player['number'] in extraction['winners']
+        ))
+        player['achievements']['military'].update(dict(
+            score=record['military_score'],
+            units_killed=record['kills'],
+            units_lost=record['deaths'],
+            buildings_lost=record['buildings_lost'],
+            buildings_razed=record['razes'],
+            units_converted=record['converted'],
+            hit_points_killed=record['hit_points_killed'],
+            hit_points_razed=record['hit_points_razed']
+        ))
+        player['achievements']['economy'].update(dict(
+            score=record['economy_score'],
+            food_collected=record['total_food'],
+            wood_collected=record['total_wood'],
+            stone_collected=record['total_stone'],
+            gold_collected=record['total_gold'],
+            tribute_sent=record['tribute_sent'],
+            tribute_received=record['tribute_received'],
+            trade_gold=record['trade_profit'],
+            relic_gold=record['relic_gold']
+        ))
+        player['achievements']['society'].update(dict(
+            score=record['society_score'],
+            total_relics=record['relics_captured'],
+            total_castles=castles[player['number']],
+            total_wonders=wonders[player['number']],
+            villager_high=record['villager_high']
+        ))
+        player['achievements']['technology'].update(dict(
+            score=record['technology_score'],
+            explored_percent=record['percent_explored'],
+            research_count=research_count[player['number']],
+            feudal_time=age_times[player['number']].get(101),
+            castle_time=age_times[player['number']].get(102),
+            imperial_time=age_times[player['number']].get(103)
+        ))
+
 
 def ach(structure, fields):
     """Get field from achievements structure."""
@@ -32,6 +109,10 @@ def guess_winner(teams, resigned, i):
 
     Find what team the player was on. If anyone
     on their team resigned, assume the player lost.
+
+    If there were no resignations, the game ended
+    by some other condition (wonder, timelimit, etc),
+    assuming it did complete.
     """
     for team in teams:
         if i not in team:
@@ -39,7 +120,9 @@ def guess_winner(teams, resigned, i):
         for j in team:
             if j in resigned:
                 return False
-    return True
+    if len(resigned) > 0:
+        return True
+    return None
 
 
 def get_players_data(header, postgame, teams, resigned, cheaters, profile_ids, ratings, encoding): # pylint: disable=too-many-arguments, too-many-locals
@@ -66,7 +149,7 @@ def get_players_data(header, postgame, teams, resigned, cheaters, profile_ids, r
             'score': ach(achievements, ['total_score']),
             'position': (player.attributes.camera_x, player.attributes.camera_y),
             'rate_snapshot': ratings.get(name),
-            'user_id': profile_ids.get(player.attributes.player_color),
+            'user_id': profile_ids.get(i + 1),
             'cheater': (i + 1) in cheaters,
             'achievements': {
                 'military': {

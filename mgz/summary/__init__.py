@@ -4,9 +4,12 @@ import asyncio
 import hashlib
 import logging
 import os
+import io
+import json
 import struct
 import tempfile
 import time
+import uuid
 import zlib
 
 import construct
@@ -21,7 +24,7 @@ from mgz.summary.map import get_map_data
 from mgz.summary.settings import get_settings_data
 from mgz.summary.dataset import get_dataset_data
 from mgz.summary.teams import get_teams_data
-from mgz.summary.players import get_players_data
+from mgz.summary.players import get_players_data, enrich_de_player_data
 from mgz.summary.diplomacy import get_diplomacy_data
 from mgz.summary.chat import get_lobby_chat, parse_chat, Chat
 from mgz.summary.objects import get_objects_data
@@ -60,7 +63,8 @@ class Summary: # pylint: disable=too-many-public-methods
             'hash': None,
             'map': None,
             'lobby_name': None,
-            'duration': None
+            'duration': None,
+            'extraction': None
         }
 
         try:
@@ -79,6 +83,9 @@ class Summary: # pylint: disable=too-many-public-methods
         except (construct.core.ConstructError, zlib.error, ValueError) as e:
             raise RuntimeError("invalid mgz file: {}".format(e))
 
+        if isinstance(self._playback, io.TextIOWrapper):
+            self.extract()
+
     def _process_body(self): # pylint: disable=too-many-locals, too-many-statements, too-many-branches
         """Process rec body."""
         start_time = time.time()
@@ -89,6 +96,8 @@ class Summary: # pylint: disable=too-many-public-methods
         rated = None
         i = 0
         duration = self._header.initial.restore_time
+        fast.meta(self._handle)
+        self._actions = []
         while True:
             try:
                 operation, payload = fast.operation(self._handle)
@@ -98,6 +107,7 @@ class Summary: # pylint: disable=too-many-public-methods
                     if payload[1] and len(checksums) < CHECKSUMS:
                         checksums.append(payload[1].to_bytes(8, 'big', signed=True))
                 elif operation == fast.Operation.ACTION:
+                    self._actions.append((duration, *payload))
                     if payload[0] == fast.Action.POSTGAME:
                         self._cache['postgame'] = mgz.body.actions.postgame.parse(payload[1]['bytes'])
                     elif payload[0] == fast.Action.RESIGN:
@@ -109,6 +119,8 @@ class Summary: # pylint: disable=too-many-public-methods
                     elif payload[0] == fast.Action.CREATE:
                         self._cache['cheaters'].add(payload[1]['player_id'])
                     elif payload[0] == fast.Action.BUILD and payload[1]['building_id'] not in VALID_BUILDINGS:
+                        self._cache['cheaters'].add(payload[1]['player_id'])
+                    elif payload[0] == fast.Action.GAME and payload[1]['mode_id'] in [2, 4, 6]:
                         self._cache['cheaters'].add(payload[1]['player_id'])
                 elif operation == fast.Operation.CHAT:
                     text = payload
@@ -155,6 +167,10 @@ class Summary: # pylint: disable=too-many-public-methods
         """Get postgame structure."""
         return self._cache['postgame']
 
+    def has_achievements(self):
+        """If match has achievements available."""
+        return self._cache['postgame'] is not None or self._cache['extraction'] is not None
+
     def get_header(self):
         """Get header."""
         return self._header
@@ -173,7 +189,7 @@ class Summary: # pylint: disable=too-many-public-methods
 
     def get_version(self):
         """Get game version."""
-        return self._header.version, self._header.game_version, self._header.save_version
+        return self._header.version, self._header.game_version, self._header.save_version, self._header.log_version
 
     def get_owner(self):
         """Get rec owner (POV)."""
@@ -193,15 +209,15 @@ class Summary: # pylint: disable=too-many-public-methods
         """Get map of player color to profile IDs (DE only)."""
         if self._header.version == Version.DE:
             return {
-                p.color_id: p.profile_id
+                p.player_number: p.profile_id
                 for p in self._header.de.players
-                if p.color_id >= 0
+                if p.player_number >= 0 and p.profile_id > 0
             }
         return {}
 
     def get_players(self):
         """Get players."""
-        return get_players_data(
+        data = get_players_data(
             self.get_header(),
             self.get_postgame(),
             self.get_teams(),
@@ -209,8 +225,11 @@ class Summary: # pylint: disable=too-many-public-methods
             self._cache['cheaters'],
             self.get_profile_ids(),
             self.get_ratings(),
-            self.get_encoding()
+            self.get_encoding(),
         )
+        if self._cache['extraction']:
+            enrich_de_player_data(data, self._cache['extraction'])
+        return data
 
     def get_objects(self):
         """Get objects."""
@@ -225,16 +244,13 @@ class Summary: # pylint: disable=too-many-public-methods
     def get_platform(self):
         """Get platform data."""
         lobby_name = None
-        guid_formatted = None
+        guid = None
         if self._header.version == Version.DE:
-            lobby_name = self._header.de.lobby_name.decode(self.get_encoding()).strip()
-            guid = self._header.de.guid.hex()
-            guid_formatted = '{}-{}-{}-{}-{}'.format(
-                guid[0:8], guid[8:12], guid[12:16], guid[16:20], guid[20:]
-            )
+            lobby_name = self._header.de.lobby_name.value.decode(self.get_encoding()).strip()
+            guid = str(uuid.UUID(bytes=self._header.de.guid))
         return {
             'platform_id': self._cache['platform_id'],
-            'platform_match_id': guid_formatted,
+            'platform_match_id': guid,
             'ladder': self._cache['ladder'],
             'rated': self._cache['rated'],
             'ratings': self._cache['ratings'],
@@ -274,7 +290,8 @@ class Summary: # pylint: disable=too-many-public-methods
                 self._header.map_info.size_x,
                 self._header.version,
                 self.get_dataset()['id'],
-                self._header.map_info.tile
+                self._header.map_info.tile,
+                de_seed=self._header.lobby.de.map_seed if self._header.lobby.de else None
             )
         return self._cache['map']
 
@@ -323,10 +340,25 @@ class Summary: # pylint: disable=too-many-public-methods
             self.get_duration(),
             self._playback,
             temp, interval,
-            self.get_objects()['objects']
+            self.get_objects()['objects'],
+            self.get_players(),
+            self.get_teams()
         )
 
     def extract(self, interval=1000):
         """Async wrapper around full extraction."""
-        loop = asyncio.get_event_loop()
-        return loop.run_until_complete(self.async_extract(interval))
+        if not self._cache['extraction']:
+            if isinstance(self._playback, io.TextIOWrapper):
+                from mgz.summary.extract import external_extracted_data
+
+                self._cache['extraction'] = external_extracted_data(
+                    json.loads(self._playback.read()),
+                    self.get_objects()['objects'],
+                    self.get_players(),
+                    self.get_teams(),
+                    self._actions
+                )
+            else:
+                loop = asyncio.get_event_loop()
+                self._cache['extraction'] = loop.run_until_complete(self.async_extract(interval))
+        return self._cache['extraction']

@@ -4,7 +4,6 @@ from enum import Enum
 
 CHECKSUM_INTERVAL = 500
 
-
 class Operation(Enum):
     """Operation types."""
     ACTION = 1
@@ -13,7 +12,6 @@ class Operation(Enum):
     CHAT = 4
     START = 5
     SAVE = 6
-
 
 class Action(Enum):
     """Action types."""
@@ -38,6 +36,8 @@ class Action(Enum):
     CHAPTER = 32
     DE_ATTACK_MOVE = 33
     DE_AUTOSCOUT = 38
+    DE_UNKNOWN_39 = 39
+    DE_UNKNOWN_41 = 41
     AI_COMMAND = 53
     MAKE = 100
     RESEARCH = 101
@@ -108,8 +108,8 @@ def parse_action(action_type, data):
         object_ids = struct.unpack_from('<xx' + str(data[0]) + 'I', data)
         return dict(object_ids=list(object_ids))
     if action_type == Action.RESEARCH:
-        object_id, player_id = struct.unpack_from('<3xIh', data)
-        return dict(player_id=player_id, object_ids=[object_id])
+        object_id, player_id, technology_id = struct.unpack_from('<3xIh2xI', data)
+        return dict(player_id=player_id, technology_id=technology_id, object_ids=[object_id])
     if action_type == Action.FORMATION:
         player_id, formation_id, (*object_ids) = struct.unpack_from('<xhI' + str(data[0]) + 'I', data)
         return dict(player_id=player_id, object_ids=list(object_ids), formation_id=formation_id)
@@ -155,7 +155,7 @@ def parse_action(action_type, data):
         player_id, x, y = struct.unpack_from('<x3b', data)
         return dict(player_id=player_id, x=x, y=y)
     if action_type == Action.GAME:
-        return dict(player_id=data[1])
+        return dict(player_id=data[1], mode_id=data[0])
     if action_type == Action.FLARE:
         x, y, player_id = struct.unpack_from('<19x2fb', data)
         return dict(player_id=player_id, x=x, y=y)
@@ -211,18 +211,19 @@ def action(data):
 
 def chat(data):
     """Handle chat."""
-    check, length = struct.unpack('<II', data.read(8))
-    if check == CHECKSUM_INTERVAL:
-        data.seek(-4, 1)
-        start(data)
-        return None
+    _, length = struct.unpack('<II', data.read(8))
     msg = data.read(length)
     return msg
 
 
 def start(data):
     """Handle start."""
-    return data.read(28)
+    data.read(20)
+    a, b, _ = struct.unpack('<III', data.read(12))
+    if a != 0: # AOC 1.0x
+        data.seek(-12, 1)
+    if b == 2: # DE
+        data.seek(-8, 1)
 
 
 def save(data):
@@ -233,12 +234,26 @@ def save(data):
     data.read(length - pos - 8)
 
 
+def meta(data):
+    """Handle log meta."""
+    try:
+        first, = struct.unpack('<I', data.read(4))
+        if first != 500: # Not AOK
+            data.read(4)
+        data.read(20)
+        a, b, _ = struct.unpack('<III', data.read(12))
+        if a != 0: # AOC 1.0x
+            data.seek(-12, 1)
+        if b == 2: # DE
+            data.seek(-8, 1)
+    except struct.error:
+        raise ValueError("insufficient meta received")
+
+
 def operation(data):
     """Handle body operations."""
     try:
         op_id, = struct.unpack('<I', data.read(4))
-        if op_id == CHECKSUM_INTERVAL: # AOK
-            return Operation.START, data.read(32)
         try:
             op_type = Operation(op_id)
         except ValueError:
@@ -251,8 +266,6 @@ def operation(data):
             return op_type, viewlock(data)
         if op_type == Operation.CHAT:
             return op_type, chat(data)
-        if op_type == Operation.START:
-            return op_type, start(data)
     except struct.error:
         raise EOFError
     raise RuntimeError("unknown data received")

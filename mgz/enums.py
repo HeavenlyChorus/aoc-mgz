@@ -104,7 +104,7 @@ def GameTypeEnum(ctx):
         TurboRandom=8,
         CaptureTheRelic=10,
         SuddenDeath=11,
-        Unknown=13
+        EmpireWars=13
     )
 
 def ObjectTypeEnum(ctx):
@@ -145,7 +145,9 @@ def DifficultyEnum(ctx):
         hard=1,
         moderate=2,
         standard=3,
-        easiest=4
+        easiest=4,
+        extreme=5,
+        unknown=6
     )
 
 def OperationEnum(ctx):
@@ -155,18 +157,8 @@ def OperationEnum(ctx):
         action=1,
         sync=2,
         viewlock=3,
-        message=4,
-        de_start=5,
-        aok_start=500,
+        chat=4,
         default="embedded"
-    )
-
-def MessageEnum(ctx):
-    """Message Type Enumeration."""
-    return Enum(
-        ctx,
-        start=500,
-        default="chat"
     )
 
 def ResourceEnum(ctx):
@@ -208,7 +200,9 @@ def ResourceLevelEnum(ctx):
         standard=0,
         low=1,
         medium=2,
-        high=3
+        high=3,
+        unknown1=4,
+        unknown2=5
     )
 
 def RevealMapEnum(ctx):
@@ -355,6 +349,7 @@ def ActionEnum(ctx):
         chapter=32,
         de_attackmove=33,
         de_autoscout=38,
+        de_unknown=39,
         ai_command=53,
         ai_queue=100,
         research=101,

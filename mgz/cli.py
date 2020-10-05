@@ -58,7 +58,7 @@ async def extract_rec(playback, path, select=None):
     """Extract data from a recorded game."""
     with open(path, 'rb') as handle:
         summary = Summary(handle, playback=playback)
-        data = await summary.async_extract()
+        data = await summary.async_extract(30000)
         print('version: {}, runtime: {}'.format(data['version'], data['runtime']))
         for key, records in data.items():
             if select and key != select:
@@ -83,12 +83,14 @@ def print_info(path):
             ['Completed', summary.get_completed()],
             ['Restored', header.initial.restore_time > 0],
             ['Postgame', bool(summary.get_postgame())],
-            ['Version', '{} ({}, {})'.format(header.version.name, header.game_version, round(header.save_version, 2))],
+            ['Objects', bool(summary.get_objects()['objects'])],
+            ['Version', '{} ({}, {}, {})'.format(header.version.name, header.game_version, header.save_version, header.log_version)],
             ['Dataset', '{} {}'.format(dataset['name'], dataset['version'])],
-            ['Hash', summary.get_hash().hexdigest()],
+            ['File Hash', summary.get_file_hash()],
+            ['Match Hash', summary.get_hash().hexdigest() if summary.get_hash() else None],
             ['Encoding', summary.get_encoding()],
             ['Language', summary.get_language()],
-            ['Map', summary.get_map()['name']] # pylint: disable=unsubscriptable-object
+            ['Map', '{} ({})'.format(summary.get_map()['name'], summary.get_map()['seed'])] # pylint: disable=unsubscriptable-object
         ], tablefmt='plain'))
 
 
@@ -187,6 +189,7 @@ def print_histogram(path):
         operations = defaultdict(int)
         actions = defaultdict(int)
         labels = {}
+        fast.meta(handle)
         while handle.tell() < size:
             op_type, payload = fast.operation(handle)
             operations[op_type.name] += 1

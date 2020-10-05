@@ -45,7 +45,8 @@ DE_MAP_NAMES = {
     30: 'King of the Hill',
     31: 'Oasis',
     32: 'Ghost Lake',
-    33: 'Random Land Map',
+    33: 'Nomad',
+    51: 'Mideast',
     # 59: Custom
     67: 'Acropolis',
     68: 'Budapest',
@@ -63,10 +64,19 @@ DE_MAP_NAMES = {
     80: 'CtR Monsoon',
     81: 'CtR Pyramid Descent',
     82: 'CtR Spiral',
+    83: 'Kilimanjaro',
+    84: 'Mountain Pass',
     86: 'Serengeti',
+    87: 'Socotra',
+    108: 'Indochina',
     112: 'Bog Islands',
     122: 'Alpine Lakes',
+    124: 'Mountain Ridge',
     125: 'Ravines',
+    126: 'Wolf Hill',
+    139: 'Golden Swamp',
+    140: 'Four Lakes',
+    141: 'Land Nomad'
 }
 
 MAP_NAMES = {
@@ -194,4 +204,4 @@ VALID_BUILDINGS = [
     331, 357, 463, 464, 465, 484, 487, 488, 490, 491, 498, 562, 563, 564, 565, 584,
     585, 586, 587, 597, 598, 617, 621, 659, 661, 665, 667, 669, 673, 674, 734, 789,
     790, 792, 793, 794, 796, 797, 798, 800, 801, 802, 804, 1189
-] + [1553, 387, 110, 785] # 5th Age, Realms
+] + [1553, 387, 110, 785, 1002] + [1021, 1187, 1251] + [946, 947, 886, 888, 881, 879, 938, 871] # 5th Age, Realms, DE, Various

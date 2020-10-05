@@ -10,7 +10,7 @@ def get_dataset_data(header):
         return {
             'id': 100,
             'name': 'Definitive Edition',
-            'version': header.game_version[4:]
+            'version': None
         }
     sample = header.initial.players[0].attributes.player_stats
     if 'mod' in sample and sample.mod['id'] == 0 and sample.mod['version'] == '2':
@@ -28,6 +28,12 @@ def get_dataset_data(header):
             'id': 200,
             'name': 'Age of Kings',
             'version': '2.0a'
+        }
+    if header.version == Version.AOC10:
+        return {
+            'id': 0,
+            'name': 'The Conquerors',
+            'version': '1.0'
         }
     return {
         'id': 0,

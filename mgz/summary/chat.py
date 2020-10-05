@@ -24,6 +24,7 @@ class Chat(Enum):
     AGE = 4
     SAVE = 5
     MESSAGE = 6
+    HELP = 7
 
 
 def get_lobby_chat(header, encoding, diplomacy_type, players):
@@ -64,6 +65,8 @@ def parse_chat(line, encoding, timestamp, players, diplomacy_type=None, originat
         _parse_injected(data, line)
     elif line.find(AGE_MARKER) > 0:
         _parse_age_advance(data, line)
+    elif line.find('--') == 3:
+        _parse_help(data, line)
     else:
         _parse_chat(data, line, players, diplomacy_type)
     return data
@@ -130,6 +133,11 @@ def _parse_injected(data, line):
     })
 
 
+def _parse_help(data, line):
+    """Mark help-generated chat."""
+    data['type'] = Chat.HELP
+
+
 def _parse_chat(data, line, players, diplomacy_type):
     """Parse in-game chat message."""
     player_start = line.find('#') + 2
@@ -153,7 +161,7 @@ def _parse_chat(data, line, players, diplomacy_type):
     message = line[player_end + 2:]
     number = None
     for player_h in players:
-        if player_h['name'] == player:
+        if player_h['name'] in player:
             number = player_h['number']
     data.update({
         'type': Chat.MESSAGE,

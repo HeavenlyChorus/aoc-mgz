@@ -1,6 +1,6 @@
 """Lobby."""
 
-from construct import Array, Byte, Bytes, Flag, Int32ul, Padding, Peek, Struct, If, Computed, Embedded
+from construct import Array, Byte, Bytes, Flag, Int32ul, Padding, Peek, Struct, If, Computed, Embedded, Int32sl
 
 from mgz.enums import GameTypeEnum, RevealMapEnum
 from mgz.util import Version
@@ -16,7 +16,7 @@ lobby = "lobby"/Struct(
     ),
     Peek("reveal_map_id"/Int32ul),
     RevealMapEnum("reveal_map"/Int32ul),
-    Padding(4),
+    "fog_of_war"/Int32ul,
     "map_size"/Int32ul,
     "population_limit_encoded"/Int32ul,
     "population_limit"/Computed(lambda ctx: ctx.population_limit_encoded * (25 if ctx._.version in [Version.USERPATCH14, Version.USERPATCH15] else 1)),
@@ -28,7 +28,11 @@ lobby = "lobby"/Struct(
         )
     )),
     If(lambda ctx: ctx._.version == Version.DE,
-        Padding(5)
+        Struct(
+            "treaty_length"/Byte,
+            "cheat_codes_used"/Int32ul,
+            If(lambda ctx: ctx._._.save_version >= 13.13, Padding(4))
+        )
     ),
     Embedded(If(lambda ctx: ctx._.version != Version.AOK,
         Struct(
@@ -43,7 +47,10 @@ lobby = "lobby"/Struct(
             )
         )
     )),
-    If(lambda ctx: ctx._.version == Version.DE,
-        Padding(10)
+    "de"/If(lambda ctx: ctx._.version == Version.DE,
+        Struct(
+            "map_seed"/If(lambda ctx: ctx._._.save_version >= 13.08, Int32sl),
+            Bytes(10)
+        )
     )
 )

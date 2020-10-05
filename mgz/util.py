@@ -1,6 +1,7 @@
 """MGZ parsing utilities."""
 
 import logging
+import re
 import struct
 import zlib
 from enum import Enum
@@ -27,7 +28,8 @@ class Version(Enum):
     for consistency.
     """
     AOK = 1
-    AOC = 5
+    AOC = 4
+    AOC10 = 5
     AOC10C = 8
     USERPATCH12 = 12
     USERPATCH13 = 13
@@ -35,6 +37,7 @@ class Version(Enum):
     USERPATCH15 = 20
     DE = 21
     USERPATCH14RC2 = 22
+    MCP = 30
 
 
 class MgzPrefixed(Subconstruct):
@@ -64,12 +67,16 @@ class ZlibCompressed(Tunnel):
         return zlib.decompress(data, wbits=-15)
 
 
-def get_version(game_version, save_version):
+def get_version(game_version, save_version, log_version):
     """Get version based on version fields."""
     if game_version == 'VER 9.3':
         return Version.AOK
     if game_version == 'VER 9.4':
-        if save_version >= 12.97:
+        if log_version == 3:
+            return Version.AOC10
+        if log_version == 4:
+            return Version.AOC10C
+        if log_version == 5 or save_version >= 12.97:
             return Version.DE
         return Version.AOC
     if game_version == 'VER 9.8':
@@ -82,7 +89,24 @@ def get_version(game_version, save_version):
         return Version.USERPATCH14
     if game_version in ['VER 9.E', 'VER 9.F']:
         return Version.USERPATCH15
-    raise ValueError('unsupported version: {}, {}'.format(game_version, save_version))
+    if game_version == 'MCP 9.F':
+        return Version.MCP
+    if log_version is not None or game_version != 'VER 9.4':
+        raise ValueError('unsupported version: {}, {}, {}'.format(game_version, save_version, log_version))
+
+
+def find_version(ctx):
+    """Test version."""
+    if 'version' not in ctx:
+        return find_version(ctx._)
+    return ctx.version
+
+
+def find_save_version(ctx):
+    """Test save version."""
+    if 'save_version' not in ctx:
+        return find_save_version(ctx._)
+    return ctx.save_version
 
 
 def check_flags(peek):
@@ -151,6 +175,8 @@ class Find(Construct):
     def __init__(self, find, max_length):
         """Initiallize."""
         Construct.__init__(self)
+        if not isinstance(find, list):
+            find = [find]
         self.find = find
         self.max_length = max_length
 
@@ -162,9 +188,17 @@ class Find(Construct):
             read_bytes = stream.read(self.max_length)
         else:
             read_bytes = stream.read()
-        skip = read_bytes.find(self.find) + len(self.find)
-        stream.seek(start + skip)
-        return skip
+        candidates = []
+        for f in self.find:
+            match = re.search(f, read_bytes)
+            if not match:
+                continue
+            candidates.append(match.end())
+        if not candidates:
+            raise RuntimeError('could not find bytes')
+        choice = min(candidates)
+        stream.seek(start + choice)
+        return choice
 
 
 class RepeatUpTo(Subconstruct):

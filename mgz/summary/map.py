@@ -12,21 +12,27 @@ ENCODING_MARKERS = [
     ['Tipo de mapa: ', 'latin-1', 'es'],
     ['Ubicación: ', 'utf-8', 'es'],
     ['Ubicaci: ', 'utf-8', 'es'],
+    ['Local: ', 'utf-8', 'es'],
     ['Kartentyp: ', 'latin-1', 'de'],
+    ['Karte: ', 'utf-8', 'de'],
     ['Art der Karte: ', 'latin-1', 'de'],
     ['Type de carte\xa0: ', 'latin-1', 'fr'],
+    ['Emplacement :', 'utf-8', 'fr'],
     ['Type de carte : ', 'latin-1', 'fr'],
     ['Tipo di mappa: ', 'latin-1', 'it'],
+    ['Posizione: ', 'utf-8', 'it'],
     ['Tipo de Mapa: ', 'latin-1', 'pt'],
     ['Kaarttype', 'latin-1', 'nl'],
     ['Harita Türü: ', 'ISO-8859-1', 'tr'],
     ['Harita Sitili', 'ISO-8859-1', 'tr'],
     ['Harita tipi', 'ISO-8859-1', 'tr'],
+    ['Konum: ', 'ISO-8859-1', 'tr'],
     ['??? ?????: ', 'ascii', 'tr'], # corrupt lang dll?
     ['Térkép tipusa', 'ISO-8859-1', 'hu'],
     ['Typ mapy: ', 'ISO-8859-2', None],
     ['Тип карты: ', 'windows-1251', 'ru'],
     ['Тип Карты: ', 'windows-1251', 'ru'],
+    ['Расположение: ', 'utf-8', 'ru'],
     ['マップの種類: ', 'SHIFT_JIS', 'jp'],
     ['지도 종류: ', 'cp949', 'kr'],
     ['地??型', 'big5', 'zh'],
@@ -36,7 +42,10 @@ ENCODING_MARKERS = [
     ['地图类别：', 'cp936', 'zh'],
     ['地图类型：', 'GB2312', 'zh'],
     ['颌玉拙墁：', 'cp936', 'zh'],
-    ['位置：', 'utf-8', 'zh']
+    ['位置：', 'utf-8', 'zh'],
+    ['舞台: ', 'utf-8', 'zh'],
+    ['Vị trí: ', 'utf-8', 'vi'],
+    ['위치: ', 'utf-8', 'kr']
 ]
 LANGUAGE_MARKERS = [
     ['Dostepne', 'ISO-8859-2', 'pl'],
@@ -78,6 +87,8 @@ def extract_from_instructions(instructions):
             if instructions.find(pair[0].encode(pair[1])) > -1:
                 language = pair[2]
                 break
+    if encoding == 'unknown':
+        raise ValueError('could not detect encoding')
     return encoding, language, name
 
 
@@ -151,7 +162,7 @@ def get_water_percent(tiles, dataset_id):
     return count/len(tiles)
 
 
-def get_map_data(map_id, instructions, dimension, version, dataset_id, tiles):
+def get_map_data(map_id, instructions, dimension, version, dataset_id, tiles, de_seed=None):
     """Get the map metadata."""
     if instructions == b'\x00':
         raise ValueError('empty instructions')
@@ -166,7 +177,7 @@ def get_map_data(map_id, instructions, dimension, version, dataset_id, tiles):
         'name': name.strip(),
         'size': mgz.const.MAP_SIZES.get(dimension),
         'dimension': dimension,
-        'seed': seed,
+        'seed': de_seed if de_seed else seed,
         'modes': modes,
         'custom': custom,
         'zr': name.startswith('ZR@'),
